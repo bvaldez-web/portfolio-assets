@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FuseTwo — Interactive Color Palette</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#FBFAF8; --card:#FFFFFF; --line:#ECE7E1; --ink:#1A1008; --muted:#8A817B; --rust:#782700;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--page);font-family:'Plus Jakarta Sans',Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:56px 40px 72px;}
+
+  .head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:24px;margin-bottom:12px;}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:var(--rust);margin-bottom:14px;}
+  h1{font-size:40px;font-weight:800;letter-spacing:-0.03em;line-height:1;}
+  .sub{font-size:15px;color:#6a625c;font-weight:300;margin-top:14px;max-width:56ch;line-height:1.6;}
+
+  /* format toggle */
+  .toggle{display:inline-flex;flex-wrap:wrap;background:#F2EDE7;border:1px solid var(--line);border-radius:10px;padding:4px;gap:2px;}
+  .toggle button{border:none;background:transparent;font-family:inherit;font-size:13px;font-weight:600;color:var(--muted);padding:8px 15px;border-radius:7px;cursor:pointer;transition:all .15s;}
+  .toggle button.active{background:var(--ink);color:#fff;}
+
+  .group-label{font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);margin:48px 0 18px;padding-bottom:12px;border-bottom:1px solid var(--line);}
+  .grid{display:grid;gap:16px;}
+  .grid.primary{grid-template-columns:repeat(5,1fr);}
+  .grid.secondary{grid-template-columns:repeat(6,1fr);}
+
+  .swatch{border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--card);cursor:pointer;transition:transform .16s ease, box-shadow .16s ease;position:relative;}
+  .swatch:hover{transform:translateY(-4px);box-shadow:0 12px 28px rgba(26,16,8,0.14);}
+  .swatch:active{transform:translateY(-1px);}
+  .chip{height:118px;display:flex;align-items:center;justify-content:center;position:relative;}
+  .primary .chip{height:150px;}
+  .copyhint{font-size:11px;font-weight:600;letter-spacing:0.04em;opacity:0;transition:opacity .16s;}
+  .swatch:hover .copyhint{opacity:0.85;}
+  .copied .copyhint{opacity:1;font-weight:700;}
+  .info{padding:13px 15px;}
+  .name{font-size:13px;font-weight:600;}
+  .val{font-size:12px;color:var(--muted);font-family:'Consolas',monospace;margin-top:3px;letter-spacing:-0.01em;}
+
+  .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;font-size:13px;font-weight:600;padding:12px 22px;border-radius:999px;opacity:0;pointer-events:none;transition:all .25s ease;z-index:50;box-shadow:0 10px 30px rgba(0,0,0,0.25);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast b{color:#FF8C00;}
+
+  .foot{margin-top:52px;padding-top:22px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+
+  @media(max-width:860px){
+    .wrap{padding:36px 22px 56px;}
+    .grid.primary{grid-template-columns:repeat(2,1fr);}
+    .grid.secondary{grid-template-columns:repeat(3,1fr);}
+    h1{font-size:30px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div></div>
+    <div class="toggle" id="toggle">
+      <button data-fmt="hex" class="active">HEX</button>
+      <button data-fmt="rgb">RGB</button>
+      <button data-fmt="hsl">HSL</button>
+      <button data-fmt="cmyk">CMYK</button>
+    </div>
+  </div>
+
+  <div class="group-label" style="margin-top:8px;">Primary</div>
+  <div class="grid primary" id="primary"></div>
+
+  <div class="group-label">Secondary</div>
+  <div class="grid secondary" id="secondary"></div>
+
+  <div class="foot">
+    <span>FuseTwo Brand System · 2026</span>
+    <span>Click to copy · <span id="fmtlabel">HEX</span></span>
+  </div>
+</div>
+
+<div class="toast" id="toast">Copied <b id="toastval"></b></div>
+
+<script>
+  const PRIMARY = [
+    ["Ignition Red","#FF2D00"],
+    ["Fuse Orange","#FF8C00"],
+    ["Deep Rust","#782700"],
+    ["Burnt Orange","#B93E00"],
+    ["Warm White","#F5F0EB"],
+  ];
+  const SECONDARY = [
+    ["Signal Yellow","#FFE600"],
+    ["Flame","#FF5500"],
+    ["Rust","#A31E00"],
+    ["Carbon Black","#0F0500"],
+    ["Ember Brown","#3F2D27"],
+    ["Charcoal Plum","#3D2B3F"],
+    ["Deep Navy","#0C1F4A"],
+    ["Pulse Blue","#0A3080"],
+    ["Midnight Indigo","#1A1B4B"],
+    ["Storm Gray","#5C5450"],
+    ["Sandstone","#D9B48F"],
+    ["Cinder","#8C8078"],
+  ];
+
+  let fmt = "hex";
+
+  function hexToRgb(hex){
+    const n = parseInt(hex.slice(1),16);
+    return [(n>>16)&255,(n>>8)&255,n&255];
+  }
+  function rgbToHsl(r,g,b){
+    r/=255;g/=255;b/=255;
+    const max=Math.max(r,g,b),min=Math.min(r,g,b);
+    let h,s,l=(max+min)/2;
+    if(max===min){h=s=0;}
+    else{
+      const d=max-min;
+      s=l>0.5?d/(2-max-min):d/(max+min);
+      switch(max){
+        case r:h=(g-b)/d+(g<b?6:0);break;
+        case g:h=(b-r)/d+2;break;
+        case b:h=(r-g)/d+4;break;
+      }
+      h/=6;
+    }
+    return [Math.round(h*360),Math.round(s*100),Math.round(l*100)];
+  }
+  function rgbToCmyk(r,g,b){
+    r/=255;g/=255;b/=255;
+    const k=1-Math.max(r,g,b);
+    if(k===1) return [0,0,0,100];
+    const c=(1-r-k)/(1-k);
+    const m=(1-g-k)/(1-k);
+    const y=(1-b-k)/(1-k);
+    return [Math.round(c*100),Math.round(m*100),Math.round(y*100),Math.round(k*100)];
+  }
+  function fmtValue(hex){
+    if(fmt==="hex") return hex.toUpperCase();
+    const [r,g,b]=hexToRgb(hex);
+    if(fmt==="rgb") return `rgb(${r}, ${g}, ${b})`;
+    if(fmt==="hsl"){ const [h,s,l]=rgbToHsl(r,g,b); return `hsl(${h}, ${s}%, ${l}%)`; }
+    const [c,m,y,k]=rgbToCmyk(r,g,b);
+    return `cmyk(${c}, ${m}, ${y}, ${k})`;
+  }
+  function textColor(hex){
+    const [r,g,b]=hexToRgb(hex);
+    // relative luminance
+    const lum = (0.2126*r + 0.7152*g + 0.0722*b)/255;
+    return lum>0.6 ? "#1A1008" : "#F5F0EB";
+  }
+
+  function build(containerId, arr){
+    const el = document.getElementById(containerId);
+    el.innerHTML = "";
+    arr.forEach(([name,hex])=>{
+      const tc = textColor(hex);
+      const sw = document.createElement("div");
+      sw.className = "swatch";
+      sw.innerHTML = `
+        <div class="chip" style="background:${hex};">
+          <span class="copyhint" style="color:${tc};">Click to copy</span>
+        </div>
+        <div class="info">
+          <div class="name">${name}</div>
+          <div class="val" data-hex="${hex}">${fmtValue(hex)}</div>
+        </div>`;
+      sw.addEventListener("click",()=>copy(hex, sw));
+      el.appendChild(sw);
+    });
+  }
+
+  function refreshValues(){
+    document.querySelectorAll(".val").forEach(v=>{
+      v.textContent = fmtValue(v.dataset.hex);
+    });
+    document.getElementById("fmtlabel").textContent = fmt.toUpperCase();
+  }
+
+  let toastTimer;
+  function copy(hex, sw){
+    const value = fmtValue(hex);
+    navigator.clipboard.writeText(value).then(()=>{
+      sw.classList.add("copied");
+      const hint = sw.querySelector(".copyhint");
+      const prev = hint.textContent; hint.textContent = "Copied ✓";
+      setTimeout(()=>{ hint.textContent = prev; sw.classList.remove("copied"); }, 1100);
+      const toast = document.getElementById("toast");
+      document.getElementById("toastval").textContent = value;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(()=>toast.classList.remove("show"), 1600);
+    }).catch(()=>{
+      // fallback
+      const ta=document.createElement("textarea");ta.value=value;document.body.appendChild(ta);ta.select();
+      try{document.execCommand("copy");}catch(e){}
+      document.body.removeChild(ta);
+    });
+  }
+
+  document.getElementById("toggle").addEventListener("click",(e)=>{
+    const btn = e.target.closest("button"); if(!btn) return;
+    fmt = btn.dataset.fmt;
+    document.querySelectorAll("#toggle button").forEach(b=>b.classList.toggle("active",b===btn));
+    refreshValues();
+  });
+
+  build("primary", PRIMARY);
+  build("secondary", SECONDARY);
+</script>
+</body>
+</html>
